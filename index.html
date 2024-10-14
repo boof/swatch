@@ -32,11 +32,15 @@
   <h1 id="title">Swatch</h1>
 
   <section id="menu" class="page">
-    <button name="export" disabled>Exportieren</button>
-    <button name="back">Zurück</button>
-    <!-- <button name="">Neue Swatch</button> -->
-    <!-- <button name="open">Öffnen</button> -->
-    <!-- <button name="">Swatch Löschen</button> -->
+    <div id="specificOptions">
+      <button name="back"></button>
+      <button name="export" disabled>Exportieren</button>
+      <button name="delete">Löschen</button>
+    </div>
+    <div id="genericOptions">
+      <button name="new">Neue Swatch anlegen</button>
+      <button name="open">Swatch öffnen</button>
+    </div>
   </section>
 
   <section id="banner" class="page open">
@@ -70,7 +74,9 @@
     </form>
   </section>
 
-  <section id="swatches" class="page"></section>
+  <section id="swatchList" class="page">
+    <ul id="swatches"></ul>
+  </section>
 
   <section id="swatch" class="page">
     <ul id="swatchActiveUsers"></ul>

@@ -4,25 +4,48 @@ import {stringify} from 'csv-stringify/browser/esm';
 
 ((ctx) => {
   function init(context) {
+    // MENU
     const headerSwatchName = document.getElementById("title");
 
     const pageMenu = document.getElementById("menu");
+    const buttonBack = pageMenu.querySelector("button[name=back]");
     const buttonExport = pageMenu.querySelector("button[name=export]");
+    const buttonDelete = pageMenu.querySelector("button[name=delete]");
+    const buttonOpen = pageMenu.querySelector("button[name=open]");
+    const menuSpecific = pageMenu.querySelector("#specificOptions");
+    const menuGeneric = pageMenu.querySelector("#genericOptions");
     async function openMenu() {
       const swatch = currentSwatch();
 
       if (swatch) {
         const ongoingActivities = await queryOngoingActivities(swatch.__id__);
         buttonExport.disabled = ongoingActivities.length > 0;
+        buttonBack.innerText = swatch.name;
+        menuSpecific.classList.remove("hidden");
       } else {
-        buttonExport.disabled = true;
+        menuSpecific.classList.add("hidden");
       }
 
       requestAnimationFrame(() => openPage("menu"));
     }
     headerSwatchName.addEventListener("click", ev => openMenu());
 
-    pageMenu.addEventListener("click", ev => {
+    menuGeneric.addEventListener("click", ev => {
+      const el = ev.target;
+      if (el.nodeName != "BUTTON") return;
+
+      ev.preventDefault();
+      switch (el.name) {
+      case "new":
+        openForm();
+        break;
+      case "open":
+        openSwatchList();
+        break;
+      default:
+      }
+    });
+    menuSpecific.addEventListener("click", ev => {
       const el = ev.target;
       if (el.nodeName != "BUTTON") return;
 
@@ -74,24 +97,44 @@ import {stringify} from 'csv-stringify/browser/esm';
       stringifier.end();
     }
 
-    async function openSwatches() {
-      openBanner();
+    function createMenuItem(swatch) {
+      const anchor = document.createElement('A');
+      anchor.innerText = swatch.name;
+      anchor.data = swatch;
 
-      const swatches = await getSwatches();
-      swatches.forEach(swatch => {
-        const btn = createMenuItem(swatch);
-      });
+      const item = document.createElement('LI');
+      item.append(anchor);
+
+      return item;
     }
 
-    document.addEventListener("pageOpened", ev => {
+    const listSwatches = document.getElementById('swatches');
+    async function openSwatchList() {
+      openBanner();
+
+      listSwatches.innerHTML = '';
+
+      const swatches = await getSwatches();
+      swatches.sort((a, b) => { return a.name.localeCompare(b.name) });
+      swatches.forEach(swatch => {
+        const item = createMenuItem(swatch);
+        listSwatches.append(item);
+      });
+
+      requestAnimationFrame(() => openPage('swatchList'));
+    }
+
+    document.addEventListener('pageOpened', ev => {
       console.log(ev.detail.target.id);
 
       switch (ev.detail.target.id) {
-        case "banner":
+        case 'banner':
+          startBannerWatch();
           stopSwatchWatches();
           break;
-        case "swatch":
+        case 'swatch':
           stopBannerWatch();
+          startSwatchWatches();
           break;
         default:
           stopSwatchWatches();
@@ -203,7 +246,6 @@ import {stringify} from 'csv-stringify/browser/esm';
     }
 
     function openBanner() {
-      startBannerWatch();
       requestAnimationFrame(()=> { openPage("banner") });
     }
 
@@ -291,6 +333,11 @@ import {stringify} from 'csv-stringify/browser/esm';
       openBanner();
 
       const swatch = await getSwatch(swatchId);
+      if (swatch == undefined) {
+        currentSwatch() ? openSwatch(currentSwatch().__id__) : openSwatchList();
+        return;
+      }
+
       setCurrentSwatch(swatch);
 
       const activities = await queryOngoingActivities(swatch.__id__);
@@ -300,7 +347,7 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       const users = swatch.users;
       const activeUsers = [];
-      users.sort((a, b) => { return a.name.localeCompare(b.name) })
+      users.sort((a, b) => { return a.name.localeCompare(b.name) });
       users.forEach(user => {
         if (activitiesByUserId[user.__id__] != undefined) activeUsers.push(user);
       });
@@ -322,8 +369,6 @@ import {stringify} from 'csv-stringify/browser/esm';
       });
 
       localStorage.setItem("swatchId", swatchId);
-
-      startSwatchWatches();
 
       requestAnimationFrame(() => { openPage("swatch", swatch.name) });
     }
