@@ -126,7 +126,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         const req = activities.getAll(__swatchId__);
 
         req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(ev.target.result) };
+        req.onsuccess = (ev) => { resolve(req.result) };
       });
 
       return await promise;
@@ -138,7 +138,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         const req = ongoingActivities.getAll([__swatchId__, -1]);
 
         req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(ev.target.result) };
+        req.onsuccess = (ev) => { resolve(req.result) };
       });
 
       return await promise;
@@ -152,7 +152,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         const req = swatches.getAll();
 
         req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(ev.target.result) };
+        req.onsuccess = (ev) => { resolve(req.result) };
       });
 
       return await promise;
@@ -166,7 +166,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         const req = swatches.get(id);
 
         req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(ev.target.result) };
+        req.onsuccess = (ev) => { resolve(req.result) };
       });
 
       return await promise;
@@ -387,7 +387,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       const request = new Promise((resolve, reject) => {
         const update = activities.put(Object.assign(activity, updates));
         update.onerror = (ev) => { reject(ev) };
-        update.onsuccess = (ev) => { resolve(ev.target) };
+        update.onsuccess = (ev) => { resolve(update.result) };
       });
 
       transaction.commit();
@@ -452,7 +452,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         });
 
         requestAdd.onerror = (ev) => { console.log(ev) };
-        requestAdd.onsuccess = (ev) => { openSwatch(ev.target.__id__) };
+        requestAdd.onsuccess = (ev) => { openSwatch(requestAdd.__id__) };
       });
     });
 
@@ -547,8 +547,8 @@ import {stringify} from 'csv-stringify/browser/esm';
   const dbReady = new Promise((resolve, reject) => {
     const requestDatabase = window.indexedDB.open("swatch", 3);
     requestDatabase.onerror = (ev) => { reject(ev) };
-    requestDatabase.onsuccess = (ev) => { resolve(ev.target.result) };
-    requestDatabase.onupgradeneeded = (ev) => { migrate(ev.target.result) };
+    requestDatabase.onsuccess = (ev) => { resolve(requestDatabase.result) };
+    requestDatabase.onupgradeneeded = (ev) => { migrate(requestDatabase.result) };
   });
 
   async function getStore(name, mode = "readonly") {
