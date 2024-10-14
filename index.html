@@ -1,0 +1,85 @@
+<!doctype html>
+<html class="no-js" lang="de">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swatch</title>
+  <link rel="stylesheet" href="css/style.css" type="text/css">
+  <meta name="description" content="">
+
+  <meta property="og:title" content="">
+  <meta property="og:type" content="">
+  <meta property="og:url" content="">
+  <meta property="og:image" content="">
+  <meta property="og:image:alt" content="">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- <link rel="icon" href="/favicon.ico" sizes="any"> -->
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <!-- <link rel="apple-touch-icon" href="icon.png"> -->
+
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#fafafa">
+
+  <script src="main.js"></script>
+</head>
+
+<body>
+  <h1 id="title">Swatch</h1>
+
+  <section id="menu" class="page">
+    <button name="export" disabled>Exportieren</button>
+    <button name="back">Zurück</button>
+    <!-- <button name="">Neue Swatch</button> -->
+    <!-- <button name="open">Öffnen</button> -->
+    <!-- <button name="">Swatch Löschen</button> -->
+  </section>
+
+  <section id="banner" class="page open">
+    <svg id="bannerWatch" width="200" height="200" viewBox="-100 -100 200 200">
+        <circle class="minute_marker" r="90" pathLength="60" />
+        <circle class="hour_marker" r="90" pathLength="60" />
+        <g id="second_hand"><line class="hand hand--second" x1="0" y1="12" x2="0" y2="-80" /></g>
+        <circle class="center" r="3" />
+    </svg>
+  </section>
+
+  <section id="newSwatch" class="page">
+    <p>Lege jetzt eine Swatch an um loszulegen.</p>
+
+    <form>
+      <input type="text" name="swatch.name" placeholder="Name der neuen Swatch" />
+
+      <fieldset>
+        <legend>Tätigkeiten</legend>
+        <input type="text" name="swatch.tasks[].name" placeholder="Neue Tätigkeiten" />
+        <input disabled type="button" name="Task.add()" value="Hinzufügen" />
+      </fieldset>
+
+      <fieldset>
+        <legend>Benutzer</legend>
+        <input type="text" name="swatch.users[].name" placeholder="Neuer Benutzer" />
+        <input disabled type="button" name="User.add()" value="Hinzufügen" />
+      </fieldset>
+
+      <input disabled type="submit" name="Swatch.save()" value="Anlegen" />
+    </form>
+  </section>
+
+  <section id="swatches" class="page"></section>
+
+  <section id="swatch" class="page">
+    <ul id="swatchActiveUsers"></ul>
+    <ul id="swatchUsers"></ul>
+  </section>
+
+  <section id="finalize" class="page">
+    <button name="back">Zurück</button>
+  </section>
+</body>
+
+</html>

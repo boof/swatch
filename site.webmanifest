@@ -1,0 +1,12 @@
+{
+  "short_name": "Swatch",
+  "name": "Swatch",
+  "icons": [{
+    "src": "icon.svg",
+    "type": "image/svg+xml",
+    "sizes": "192x192"
+  }],
+  "start_url": "/?utm_source=homescreen",
+  "background_color": "#fafafa",
+  "theme_color": "#fafafa"
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Swatch",
+  "version": "1.0.0",
+  "description": "Swatch / Stopwatch",
+  "private": true,
+  "keywords": [
+    "stopwatch"
+  ],
+  "license": "MIT",
+  "author": "Florian Assmann",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack -display-error-details --no-devtool --mode=production --node-env=production",
+    "watch": "webpack -display-error-details --watch",
+    "serve": "webpack serve --open --static ./"
+  },
+  "devDependencies": {
+    "@webpack-cli/generators": "^3.0.7",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^7.1.2",
+    "csv-stringify": "^6.5.1",
+    "html-webpack-plugin": "^5.6.0",
+    "prettier": "^3.3.3",
+    "style-loader": "^4.0.0",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0",
+    "webpack-merge": "^5.10.0",
+    "workbox-webpack-plugin": "^7.1.0"
+  }
+}
