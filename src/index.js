@@ -443,8 +443,9 @@ import {stringify} from 'csv-stringify/browser/esm';
           .transaction("swatches", "readwrite")
           .objectStore("swatches");
 
+        const __id__ = self.crypto.randomUUID();
         const requestAdd = swatches.add({
-          __id__: self.crypto.randomUUID(),
+          __id__,
           name: textSwatchName.value,
           tasks,
           users,
@@ -452,7 +453,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         });
 
         requestAdd.onerror = (ev) => { console.log(ev) };
-        requestAdd.onsuccess = (ev) => { openSwatch(requestAdd.__id__) };
+        requestAdd.onsuccess = (ev) => { openSwatch(__id__) };
       });
     });
 
