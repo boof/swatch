@@ -33,6 +33,14 @@
   display: block;
 }
 
+#specificOptions {
+  margin-bottom: 1lh;
+}
+#genericOptions {
+  margin: 0;
+  padding: 0;
+}
+
 /* BANNER */
 
 #banner {
@@ -75,6 +83,10 @@
   stroke: white;
 }
 
+.hidden {
+  display: none;
+}
+
 /* GENERIC */
 
 h1 {
@@ -84,6 +96,7 @@ h1 {
   margin: 0;
   text-align: center;
   text-shadow: gray 0 0 3px;
+  user-select: none;
 }
 
 body {
@@ -111,7 +124,7 @@ input {
   margin: 1em 0;
 }
 
-#swatch ul {
+#swatchList ul, #swatch ul {
   display: block;
   margin: 1lh;
   padding: 0;
@@ -120,11 +133,11 @@ input {
 #swatch ul:empty {
   display: none;
 }
-#swatch li {
+#swatchList li, #swatch li {
   display: block;
   margin: 0.4em 0;
 }
-#swatch li a {
+#swatchList li a, #swatch li a {
   background-color: lightgray;
   border-radius: 0.2em;
   color: dimgray;
@@ -163,7 +176,7 @@ input {
   cursor: pointer;
   display: block;
   font-size: 1.4em;
-  margin: 0.4em 0;
+  margin: 0 0 0.4em 0;
   padding: 0.2em 0.6em;
   width: 100%;
 }
