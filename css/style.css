@@ -98,8 +98,13 @@ input {
   display: none;
 }
 
+#newSwatch > * {
+  margin: 1lh;
+}
+
 #newSwatch fieldset input[type=text] {
   margin-top: 4px;
+  font-size: 0.9em;
 }
 
 #newSwatch fieldset {
