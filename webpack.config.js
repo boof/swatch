@@ -40,7 +40,6 @@ const config = {
 };
 
 module.exports = () => {
-  console.log(config);
   if (isProduction) {
       config.mode = 'production';
       config.devtool = 'nosources-source-map';
