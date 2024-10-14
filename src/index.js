@@ -407,8 +407,10 @@ import {stringify} from 'csv-stringify/browser/esm';
 
     // FORM
     function openForm() {
-      requestAnimationFrame(()=> { openPage("newSwatch") });
-      textSwatchName.focus();
+      requestAnimationFrame(()=> {
+        openPage("newSwatch");
+        textSwatchName.focus();
+      });
     }
 
     const formNewSwatch = document.querySelector("#newSwatch form");
@@ -500,6 +502,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       }
     });
 
+    buttonSwatchTaskAdd.addEventListener('click', ev => { addTask() });
     textSwatchTaskName.addEventListener('keypress', ev => {
       if (ev.code != "Enter") return;
 
@@ -515,6 +518,7 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       if (ev.ctrlKey) submitForm();
     });
+    buttonSwatchUserAdd.addEventListener('click', ev => { addUser() });
     textSwatchUserName.addEventListener('keypress', ev => {
       if (ev.code != "Enter") return;
 
