@@ -115,7 +115,8 @@ input {
   margin: 1lh;
 }
 
-#newSwatch fieldset input[type=text] {
+#newSwatch fieldset input {
+  display: block;
   margin-top: 4px;
   font-size: 0.9em;
 }
