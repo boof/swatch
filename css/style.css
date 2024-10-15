@@ -180,7 +180,7 @@ input {
   width: 100%;
 }
 
-#delete button[name=ok] {
+#delete button[name=ok], #specificOptions button[name=delete] {
   background-color: darksalmon;
   color: dimgray;
 }
