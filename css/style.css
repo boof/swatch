@@ -146,10 +146,9 @@ input {
   font-size: 1.4em;
   padding: 0.2em 0.6em;
 }
-#swatchActiveUsers li a {
+#swatchList li a.current, #swatchActiveUsers li a {
   background-color: palegreen;
   border-radius: 0.2em;
-/*  box-shadow: 0px 1px 0px 0px dimgray;*/
   color: dimgray;
   cursor: pointer;
   display: block;
@@ -161,14 +160,14 @@ input {
   position: relative;
 }
 
-#menu.open, #finalize.open {
+#delete.open, #menu.open, #finalize.open {
   display: block;
   margin: 1lh;
   padding: 0;
   user-select: none;
 }
 
-#menu button, #finalize button {
+#delete button, #menu button, #finalize button {
   background-color: palegreen;
   border: none;
   border-radius: 0.2em;
@@ -179,6 +178,11 @@ input {
   margin: 0 0 0.4em 0;
   padding: 0.2em 0.6em;
   width: 100%;
+}
+
+#delete button[name=ok] {
+  background-color: darksalmon;
+  color: dimgray;
 }
 
 #menu button[name=back], #finalize button[name=back] {
