@@ -1,0 +1,43 @@
+{
+  "swatches": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "__id__": { "type": "string", "format": "uuid" },
+        "name": { "type": "string" },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "__id__": { "type": "string", "format": "uuid" },
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "__id__": { "type": "string", "format": "uuid" },
+              "name": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "activities": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "__swatchId__": { "type": "string", "format": "uuid" },
+        "__userId__": { "type": "string", "format": "uuid" },
+        "__taskId__": { "type": "string", "format": "uuid", "required": false },
+        "startedAt": { "type": "date" },
+        "stoppedAt": { "type": "date", "required": false }
+  }
+}
