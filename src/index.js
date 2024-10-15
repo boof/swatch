@@ -107,20 +107,51 @@ import {stringify} from 'csv-stringify/browser/esm';
     function sortByStartedAt(a, b) { return a.startedAt - b.startedAt }
 
     document.addEventListener('pageOpened', ev => {
-      console.log(ev.detail.target.id);
+      const page = ev.detail.target.id;
+      const url = new URL(location);
 
-      switch (ev.detail.target.id) {
+      console.log(page);
+
+      switch (page) {
         case 'banner':
           startBannerWatch();
           stopSwatchWatches();
           break;
         case 'swatch':
+          url.path = `/swatch/${currentSwatchId()}`;
+          history.pushState({ page, swatchId: currentSwatchId() }, '', url);
+
           stopBannerWatch();
           startSwatchWatches();
+
           break;
         default:
+          url.path = `/${page}`
+          history.pushState({ page, swatchId: currentSwatchId() }, '', url);
+
           stopSwatchWatches();
           stopBannerWatch();
+      }
+    });
+    addEventListener('popstate', ev => {
+      const { page, swatchId } = ev.state;
+
+      console.log(ev.state);
+
+      switch (page) {
+      case 'swatch': openSwatch(swatchId);
+        break;
+      case 'finalize': openSwatch(swatchId);
+        break;
+      case 'delete': openSwatch(swatchId);
+        break;
+      case 'swatchList': openSwatchList();
+        break;
+      case 'newSwatch': openForm();
+        break;
+      default:
+        if (swatchId) openSwatch(swatchId);
+        else openSwatchList()
       }
     });
 
@@ -182,7 +213,6 @@ import {stringify} from 'csv-stringify/browser/esm';
 
     const headerSwatchName = document.getElementById("title");
     const pageMenu = document.getElementById("menu");
-    const buttonBack = pageMenu.querySelector("button[name=back]");
     const buttonExport = pageMenu.querySelector("button[name=export]");
     const buttonDelete = pageMenu.querySelector("button[name=delete]");
     const buttonOpen = pageMenu.querySelector("button[name=open]");
@@ -195,15 +225,16 @@ import {stringify} from 'csv-stringify/browser/esm';
       if (swatch) {
         const ongoingActivitiesCount = await countOngoingActivities(swatch.__id__);
         buttonExport.disabled = ongoingActivitiesCount > 0;
-        buttonBack.innerText = swatch.name;
         menuSpecific.classList.remove("hidden");
       } else {
         menuSpecific.classList.add("hidden");
       }
 
-      requestAnimationFrame(() => openPage("menu"));
+      requestAnimationFrame(() => openPage("menu", swatch.name));
     }
-    headerSwatchName.addEventListener("click", ev => openMenu());
+    headerSwatchName.addEventListener("click", ev => {
+      context.currentPage == "menu" ? history.go(-1) : openMenu();
+    });
 
     menuGeneric.addEventListener("click", ev => {
       const el = ev.target;
@@ -428,6 +459,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       return btn;
     }
 
+    const buttonFinalizeBack = pageFinalize.querySelector('button[name=back]');
     function redrawTasks() {
       if (currentSwatch() == null) return;
 
@@ -436,7 +468,7 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       tasks.forEach(task => {
         const btn = createTaskButton(task);
-        pageFinalize.append(btn);
+        buttonFinalizeBack.before(btn);
       });
     }
 
@@ -586,6 +618,8 @@ import {stringify} from 'csv-stringify/browser/esm';
     formNewSwatch.addEventListener('submit', async (ev) => {
       ev.preventDefault();
 
+      // TODO reset form
+
       if (submitSwatch.disabled) return;
 
       let tasks = [];
@@ -600,7 +634,7 @@ import {stringify} from 'csv-stringify/browser/esm';
         users.push({ __id__: self.crypto.randomUUID(), name: node.value });
       });
 
-      const swatches = await swatchesStore("readwrite");
+      const [swatches, t] = await swatchesStore("readwrite");
 
       const __id__ = self.crypto.randomUUID();
       const swatch = { __id__, name: textSwatchName.value, tasks, users }
