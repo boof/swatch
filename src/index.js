@@ -4,125 +4,107 @@ import {stringify} from 'csv-stringify/browser/esm';
 
 ((ctx) => {
   function init(context) {
-    // MENU
-    const headerSwatchName = document.getElementById("title");
 
-    const pageMenu = document.getElementById("menu");
-    const buttonBack = pageMenu.querySelector("button[name=back]");
-    const buttonExport = pageMenu.querySelector("button[name=export]");
-    const buttonDelete = pageMenu.querySelector("button[name=delete]");
-    const buttonOpen = pageMenu.querySelector("button[name=open]");
-    const menuSpecific = pageMenu.querySelector("#specificOptions");
-    const menuGeneric = pageMenu.querySelector("#genericOptions");
-    async function openMenu() {
-      const swatch = currentSwatch();
+    // IDB
 
-      if (swatch) {
-        const ongoingActivities = await queryOngoingActivities(swatch.__id__);
-        buttonExport.disabled = ongoingActivities.length > 0;
-        buttonBack.innerText = swatch.name;
-        menuSpecific.classList.remove("hidden");
-      } else {
-        menuSpecific.classList.add("hidden");
-      }
+    async function idb(fn) {
+      const request = fn.call(context);
+      const promise = new Promise((resolve, reject) => {
+        request.onerror = (ev) => { reject(ev) };
+        request.onsuccess = (ev) => { resolve(request.result) };
+      });
 
-      requestAnimationFrame(() => openPage("menu"));
+      return await promise;
     }
-    headerSwatchName.addEventListener("click", ev => openMenu());
 
-    menuGeneric.addEventListener("click", ev => {
-      const el = ev.target;
-      if (el.nodeName != "BUTTON") return;
+    async function updateActivity(activity, updates) {
+      const item = Object.assign(activity, updates);
 
-      ev.preventDefault();
-      switch (el.name) {
-      case "new":
-        openForm();
+      const [activities, transaction] = await activitiesStore('readwrite');
+      const update = idb(() => activities.put(item));
+
+      // transaction.commit();
+
+      return await update;
+    }
+
+    async function queryIsActive(userId) {
+      const swatchId = currentSwatchId();
+      const index = await activitiesIndex("singleActiveUserIndex");
+      const activity = await idb(() => index.get([swatchId, userId, -1]));
+
+      return activity && activity.__id__ == userId;
+    }
+
+    function activitiesStore(mode = "readonly") { return getStore("activities", mode) };
+    function swatchesStore(mode = "readonly") { return getStore("swatches", mode) };
+
+    async function activitiesIndex(name, ...rest) {
+      const [store, t] = await activitiesStore.apply(this, rest);
+      return store.index(name);
+    }
+
+    async function queryActivities(query) {
+      let activities, key;
+      switch (typeof query) {
+      case "string":
+        activities = await activitiesIndex("swatchIndex");
+        key = query;
         break;
-      case "open":
-        openSwatchList();
+      case "object":
+        const index = Object.keys(query)[0];
+        activities = await activitiesIndex(index);
+        key = query[index];
         break;
       default:
+        throw("Doh!");
       }
-    });
-    menuSpecific.addEventListener("click", ev => {
-      const el = ev.target;
-      if (el.nodeName != "BUTTON") return;
+      const getAll = idb(() => activities.getAll(__swatchId__));
 
-      ev.preventDefault();
-
-      if (el.name == "export") exportCSV();
-      openSwatch(currentSwatch().__id__);
-    });
-
-    const anchorDownload = document.getElementById('download');
-    async function exportCSV() {
-      const swatch = currentSwatch();
-      const activities = await queryActivities(swatch.__id__);
-
-      const userNamesById = {};
-      swatch.users.forEach(user => { userNamesById[user.__id__] = user.name });
-      const taskNamesById = {};
-      swatch.tasks.forEach(task => { taskNamesById[task.__id__] = task.name });
-
-      activities.sort((a, b) => { return b.startedAt - a.startedAt });
-
-      const rows = [];
-      const stringifier = stringify({ header: ['Benutzer', 'Datum', 'Tätigkeit', 'Zeit'] });
-      stringifier.on('readable', () => {
-        let row;
-        while ((row = stringifier.read()) !== null) { rows.push(row) }
-      });
-      stringifier.on('finish', () => {
-        const csv = rows.join('');
-        const data = new Blob([csv], { type: 'text/csv' });
-
-        const anchor = document.createElement("A");
-        anchor.href = URL.createObjectURL(data);
-        anchor.download = `${swatch.name}.csv`;
-
-        anchor.click();
-      })
-
-      const formatter = new Intl.DateTimeFormat("de");
-      activities.forEach(activity => {
-        const date = formatter.format(activity.stoppedAt);
-        const dTs = (activity.stoppedAt - activity.startedAt.getTime()) / 1000;
-        const userName = userNamesById[activity.__userId__];
-        const taskName = taskNamesById[activity.__taskId__];
-
-        const data = [userName, date, taskName, Math.floor(dTs)];
-        stringifier.write(data);
-      });
-      stringifier.end();
+      return await getAll;
     }
 
-    function createMenuItem(swatch) {
-      const anchor = document.createElement('A');
-      anchor.innerText = swatch.name;
-      anchor.data = swatch;
+    async function countOngoingActivities(__swatchId__) {
+      const ongoingActivities = await activitiesIndex("allActiveIndex");
+      const count = idb(() => ongoingActivities.count([__swatchId__, -1]));
 
-      const item = document.createElement('LI');
-      item.append(anchor);
-
-      return item;
+      return await count;
     }
 
-    const listSwatches = document.getElementById('swatches');
-    async function openSwatchList() {
-      openBanner();
+    async function queryOngoingActivities(__swatchId__) {
+      const ongoingActivities = await activitiesIndex("allActiveIndex");
+      const getAll = idb(() => ongoingActivities.getAll([__swatchId__, -1]));
 
-      listSwatches.innerHTML = '';
-
-      const swatches = await getSwatches();
-      swatches.sort((a, b) => { return a.name.localeCompare(b.name) });
-      swatches.forEach(swatch => {
-        const item = createMenuItem(swatch);
-        listSwatches.append(item);
-      });
-
-      requestAnimationFrame(() => openPage('swatchList'));
+      return await getAll;
     }
+
+    async function getStore(name, mode = "readonly") {
+      const db = await dbReady
+      const transaction = db.transaction(name, mode);
+
+      return [transaction.objectStore(name), transaction];
+    }
+
+    async function getSwatches() {
+      const [swatches, t] = await swatchesStore();
+      const getAll = idb(() => swatches.getAll());
+
+      return await getAll;
+    }
+
+    async function getSwatch(id) {
+      if (currentSwatchId() == id) return currentSwatch();
+
+      const [swatches, t] = await swatchesStore();
+      const get = idb(() => swatches.get(id));
+
+      return await get;
+    }
+
+    // GENERIC
+
+    function sortByName(a, b) { return a.name.localeCompare(b.name) }
+    function sortByStartedAt(a, b) { return a.startedAt - b.startedAt }
 
     document.addEventListener('pageOpened', ev => {
       console.log(ev.detail.target.id);
@@ -155,80 +137,233 @@ import {stringify} from 'csv-stringify/browser/esm';
       document.dispatchEvent(pageOpened);
     }
 
-    function activitiesStore(mode = "readonly") { return getStore("activities", mode) };
-    function swatchesStore(mode = "readonly") { return getStore("swatches", mode) };
-
-    async function activitiesIndex(name) {
-      const [store, t] = await activitiesStore();
-      return store.index(name);
-    }
-
-    async function queryActivities(__swatchId__) {
-      const activities = await activitiesIndex("swatchIndex");
-      const promise = new Promise((resolve, reject) => {
-        const req = activities.getAll(__swatchId__);
-
-        req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(req.result) };
-      });
-
-      return await promise;
-    }
-
-    async function queryOngoingActivities(__swatchId__) {
-      const ongoingActivities = await activitiesIndex("allActiveIndex");
-      const promise = new Promise((resolve, reject) => {
-        const req = ongoingActivities.getAll([__swatchId__, -1]);
-
-        req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(req.result) };
-      });
-
-      return await promise;
-    }
-
     function currentSwatch() { return pageSwatch.data }
-
-    async function getSwatches() {
-      const [swatches, t] = await swatchesStore();
-      const promise = new Promise((resolve, reject) => {
-        const req = swatches.getAll();
-
-        req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(req.result) };
-      });
-
-      return await promise;
-    }
-
-    async function getSwatch(id) {
-      if (currentSwatch() && currentSwatch().__id__ == id) return currentSwatch();
-
-      const [swatches, t] = await swatchesStore();
-      const promise = new Promise((resolve, reject) => {
-        const req = swatches.get(id);
-
-        req.onerror = (ev) => { reject(ev) };
-        req.onsuccess = (ev) => { resolve(req.result) };
-      });
-
-      return await promise;
-    }
-
+    function currentSwatchId() { if (pageSwatch.data) return pageSwatch.data.__id__ }
     function setCurrentSwatch(newSwatch) {
-      if (currentSwatch() && currentSwatch().__id__ == newSwatch.__id__) return;
+      if (currentSwatchId() == newSwatch.__id__) return;
 
       const detail = { newSwatch, oldSwatch: pageSwatch.data }
       const swatchChanged = new CustomEvent("swatchChanged", { detail });
 
+      localStorage.setItem("swatchId", newSwatch.__id__);
       pageSwatch.data = newSwatch;
 
       document.dispatchEvent(swatchChanged);
     }
+    function resetCurrentSwatch() {
+      if (currentSwatchId() == undefined) return;
+
+      const detail = { newSwatch: null, oldSwatch: pageSwatch.data }
+      const swatchChanged = new CustomEvent("swatchChanged", { detail });
+
+      localStorage.removeItem("swatchId");
+      pageSwatch.data = null;
+
+      document.dispatchEvent(swatchChanged);
+    }
+
+    let usersById = {};
+    let tasksById = {};
+    document.addEventListener("swatchChanged", ev => {
+      const swatch = ev.detail.newSwatch;
+
+      usersById = {};
+      tasksById = {};
+
+      if (swatch != null) {
+        swatch.users.sort(sortByName);
+        swatch.users.forEach(user => { usersById[user.__id__] = user });
+        swatch.tasks.sort(sortByStartedAt);
+        swatch.tasks.forEach(task => { tasksById[task.__id__] = task });
+      }
+    });
+
+    // MENU
+
+    const headerSwatchName = document.getElementById("title");
+    const pageMenu = document.getElementById("menu");
+    const buttonBack = pageMenu.querySelector("button[name=back]");
+    const buttonExport = pageMenu.querySelector("button[name=export]");
+    const buttonDelete = pageMenu.querySelector("button[name=delete]");
+    const buttonOpen = pageMenu.querySelector("button[name=open]");
+    const menuSpecific = pageMenu.querySelector("#specificOptions");
+    const menuGeneric = pageMenu.querySelector("#genericOptions");
+
+    async function openMenu() {
+      const swatch = currentSwatch();
+
+      if (swatch) {
+        const ongoingActivitiesCount = await countOngoingActivities(swatch.__id__);
+        buttonExport.disabled = ongoingActivitiesCount > 0;
+        buttonBack.innerText = swatch.name;
+        menuSpecific.classList.remove("hidden");
+      } else {
+        menuSpecific.classList.add("hidden");
+      }
+
+      requestAnimationFrame(() => openPage("menu"));
+    }
+    headerSwatchName.addEventListener("click", ev => openMenu());
+
+    menuGeneric.addEventListener("click", ev => {
+      const el = ev.target;
+      if (el.nodeName != "BUTTON") return;
+
+      ev.preventDefault();
+      switch (el.name) {
+      case "new":
+        openForm();
+        break;
+      case "open":
+        openSwatchList();
+        break;
+      default:
+      }
+    });
+    menuSpecific.addEventListener("click", ev => {
+      const el = ev.target;
+      if (el.nodeName != "BUTTON") return;
+
+      ev.preventDefault();
+
+      switch (el.name) {
+      case "export": exportCSV();
+        break;
+      case "delete": openDelete();
+        break;
+      default:
+        openSwatch(currentSwatchId());
+      }
+    });
+
+    async function exportCSV() {
+      const swatch = currentSwatch();
+      const activities = await queryActivities(swatch.__id__);
+      activities.sort(sortByStartedAt);
+
+      const rows = [];
+      const options = {
+        header: true,
+        columns: ['Benutzer', 'Datum', 'Tätigkeit', 'Zeit']
+      };
+      const stringifier = stringify(options);
+      stringifier.on('readable', () => {
+        let row;
+        while ((row = stringifier.read()) !== null) { rows.push(row) }
+      });
+      stringifier.on('finish', () => {
+        const csv = rows.join('');
+        const data = new Blob([csv], { type: 'text/csv' });
+
+        const anchor = document.createElement("A");
+        anchor.href = URL.createObjectURL(data);
+        anchor.download = `${swatch.name}.csv`;
+        anchor.click();
+
+        openSwatch(currentSwatchId());
+      });
+
+      const formatter = new Intl.DateTimeFormat("de");
+      activities.forEach(activity => {
+        const date = formatter.format(activity.stoppedAt);
+        const dTs = (activity.stoppedAt - activity.startedAt.getTime()) / 1000;
+        const userName = usersById[activity.__userId__].name;
+        const taskName = tasksById[activity.__taskId__].name;
+
+        const data = [userName, date, taskName, Math.floor(dTs)];
+        stringifier.write(data);
+      });
+      stringifier.end();
+    }
+
+    function createMenuItem(swatch) {
+      const anchor = document.createElement('A');
+      anchor.innerText = swatch.name;
+      anchor.data = swatch;
+      if (currentSwatchId() == swatch.__id__) anchor.classList.add('current');
+
+      const item = document.createElement('LI');
+      item.append(anchor);
+
+      return item;
+    }
+
+    // DELETE
+
+    const pageDelete = document.getElementById('delete');
+
+    function openDelete() {
+      requestAnimationFrame(() => openPage('delete'));
+    }
+
+    async function deleteSwatch() {
+      const swatchId = currentSwatchId();
+      resetCurrentSwatch();
+
+      const db = await dbReady;
+      const promises = [];
+
+      const transaction = db.transaction(["swatches", "activities"], "readwrite");
+      const swatches = transaction.objectStore("swatches");
+      const activities = transaction.objectStore("activities");
+
+      const keys = await idb(() => activities.index("swatchIndex").getAllKeys(swatchId));
+      keys.forEach(key => {
+        const deleteActivity = idb(() => activities.delete(key));
+        promises.push(deleteActivity);
+      });
+      const deleteSwatch = idb(() => swatches.delete(swatchId));
+      promises.push(deleteSwatch);
+
+      const deleteAll = Promise.all(promises).then(values => openListOrForm());
+      transaction.commit();
+
+      return await deleteAll;
+    }
+
+    pageDelete.addEventListener('click', ev => {
+      const el = ev.target;
+      if (el.nodeName != "BUTTON") return;
+
+      ev.preventDefault();
+
+      if (el.name == "back") openSwatch(currentSwatchId());
+      else deleteSwatch();
+    });
+
+    // SWATCHES
+
+    const listSwatches = document.getElementById('swatches');
+
+    async function openSwatchList() {
+      openBanner();
+
+      listSwatches.innerHTML = '';
+
+      const swatches = await getSwatches();
+      swatches.sort(sortByName);
+      swatches.forEach(swatch => {
+        const item = createMenuItem(swatch);
+        listSwatches.append(item);
+      });
+
+      requestAnimationFrame(() => openPage('swatchList'));
+    }
+    listSwatches.addEventListener('click', ev => {
+      const el = ev.target;
+      if (el.nodeName != "A") return;
+
+      ev.preventDefault();
+
+      openSwatch(el.data.__id__);
+    });
+
     document.addEventListener("swatchChanged", ev => { redrawTasks() });
 
     // BANNER
+
     const watch = document.querySelector("#bannerWatch");
+
     function startBannerWatch() {
       if (context.intervalBannerWatch) return;
 
@@ -245,21 +380,42 @@ import {stringify} from 'csv-stringify/browser/esm';
       delete context.intervalBannerWatch;
     }
 
-    function openBanner() {
-      requestAnimationFrame(()=> { openPage("banner") });
-    }
+    function openBanner() { requestAnimationFrame(()=> { openPage("banner") }) }
 
     const secondsElement = document.getElementById("second_hand");
     function animateClock() {
       const date = new Date();
       const second = date.getSeconds() + date.getMilliseconds() / 1000;
 
-      secondsElement.setAttribute("transform", `rotate(${(360 / 60) * second})`);
+      secondsElement.setAttribute('transform', `rotate(${(360 / 60) * second})`);
     }
 
     // FINALIZE
 
-    const pageFinalize = document.querySelector("#finalize");
+    const pageFinalize = document.querySelector('#finalize');
+
+    function openFinalize(activity) {
+      const user = usersById[activity.__userId__];
+      pageFinalize.data = activity;
+
+      requestAnimationFrame(()=> { openPage('finalize', user.name) });
+    }
+
+    async function stopActivity(activity, task) {
+      const updates = { stoppedAt: new Date(), __taskId__: task.__id__ };
+      return await updateActivity(activity, updates);
+    }
+
+    pageFinalize.addEventListener("click", async ev => {
+      const el = ev.target;
+      if (el.nodeName != "BUTTON") return;
+
+      ev.preventDefault();
+
+      openBanner();
+      if (el.name != "back") await stopActivity(pageFinalize.data, el.data);
+      openSwatch(currentSwatchId());
+    });
 
     function createTaskButton(task) {
       const btn = document.createElement("BUTTON");
@@ -273,13 +429,19 @@ import {stringify} from 'csv-stringify/browser/esm';
     }
 
     function redrawTasks() {
-      currentSwatch().tasks.forEach(task => {
+      if (currentSwatch() == null) return;
+
+      const tasks = currentSwatch().tasks
+      tasks.sort(sortByName);
+
+      tasks.forEach(task => {
         const btn = createTaskButton(task);
-        pageFinalize.prepend(btn);
+        pageFinalize.append(btn);
       });
     }
 
     // SWATCH
+
     const pageSwatch = document.getElementById("swatch");
     const listSwatchUsers = document.getElementById("swatchUsers");
     const listActiveSwatchUsers = document.getElementById("swatchActiveUsers");
@@ -315,15 +477,15 @@ import {stringify} from 'csv-stringify/browser/esm';
     }
 
     function createUserListItem(user) {
-      const timer = document.createElement("span");
+      const timer = document.createElement("SPAN");
       timer.classList.add("timer");
 
-      const anchor = document.createElement("a");
+      const anchor = document.createElement("A");
       anchor.data = user;
       anchor.innerText = user.name;
       anchor.append(timer);
 
-      const item = document.createElement("li");
+      const item = document.createElement("LI");
       item.appendChild(anchor);
 
       return item;
@@ -334,7 +496,7 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       const swatch = await getSwatch(swatchId);
       if (swatch == undefined) {
-        currentSwatch() ? openSwatch(currentSwatch().__id__) : openSwatchList();
+        currentSwatch() ? openSwatch(currentSwatchId()) : openSwatchList();
         return;
       }
 
@@ -342,48 +504,32 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       const activities = await queryOngoingActivities(swatch.__id__);
       const activitiesByUserId = {};
-      activities.sort((a, b) => { return b.startedAt - a.startedAt });
+      activities.sort(sortByStartedAt);
       activities.forEach(activity => { activitiesByUserId[activity.__userId__] = activity });
 
       const users = swatch.users;
       const activeUsers = [];
-      users.sort((a, b) => { return a.name.localeCompare(b.name) });
       users.forEach(user => {
         if (activitiesByUserId[user.__id__] != undefined) activeUsers.push(user);
       });
 
-      const userListItemsByUser = {};
+      const userListItemsByUserId = {};
 
       listSwatchUsers.innerHTML = "";
       users.forEach(user => {
         const item = createUserListItem(user);
-        userListItemsByUser[user] = item;
+        userListItemsByUserId[user.__id__] = item;
         listSwatchUsers.append(item);
       });
 
       listActiveSwatchUsers.innerHTML = "";
       activeUsers.forEach(user => {
-        const item = userListItemsByUser[user].cloneNode(true);
+        const item = userListItemsByUserId[user.__id__].cloneNode(true);
         item.querySelector(".timer").data = activitiesByUserId[user.__id__];
         listActiveSwatchUsers.append(item);
       });
 
-      localStorage.setItem("swatchId", swatchId);
-
       requestAnimationFrame(() => { openPage("swatch", swatch.name) });
-    }
-
-    async function queryIsActive(userId) {
-      const swatchId = currentSwatch().__id__;
-      const index = await activitiesIndex("singleActiveUserIndex");
-      console.log([swatchId, userId, -1]);
-      const promise = new Promise((resolve, r) => {
-        const req = index.get([swatchId, userId, -1]);
-        req.onerror = (ev) => { resolve(false) };
-        req.onsuccess = (ev) => { resolve(req.result != undefined) };
-      });
-
-      return await promise;
     }
 
     listSwatchUsers.addEventListener("click", async (ev) => {
@@ -410,47 +556,18 @@ import {stringify} from 'csv-stringify/browser/esm';
       requestAnimationFrame(() => { listActiveSwatchUsers.append(item) });
     });
 
-    function openFinalize(data) {
-      pageFinalize.data = data;
-      requestAnimationFrame(()=> { openPage("finalize", "Tätigkeit") });
-    }
-
-    listActiveSwatchUsers.addEventListener("click", async (ev) => {
-      const anchor = ev.target.closest("li a");
+    listActiveSwatchUsers.addEventListener('click', async (ev) => {
+      const anchor = ev.target.closest('li a');
       if (anchor === null) return;
 
       ev.preventDefault();
 
-      const activity = anchor.querySelector(".timer").data;
-      pageSwatch.data.tasks.length ? openFinalize(activity) : stopActivity(activity, {});
-    });
-
-    async function stopActivity(activity, task) {
-      const updates = { stoppedAt: new Date(), __taskId__: task.__id__ };
-      const [activities, transaction] = await activitiesStore("readwrite");
-
-      const request = new Promise((resolve, reject) => {
-        const update = activities.put(Object.assign(activity, updates));
-        update.onerror = (ev) => { reject(ev) };
-        update.onsuccess = (ev) => { resolve(update.result) };
-      });
-
-      transaction.commit();
-      await request;
-    }
-
-    pageFinalize.addEventListener("click", async ev => {
-      const el = ev.target;
-      if (el.nodeName != "BUTTON") return;
-
-      ev.preventDefault();
-
-      openBanner();
-      if (el.name != "back") await stopActivity(pageFinalize.data, el.data);
-      openSwatch(currentSwatch().__id__);
+      const activity = anchor.querySelector('.timer').data;
+      currentSwatch().tasks.length ? openFinalize(activity) : stopActivity(activity, {});
     });
 
     // FORM
+
     function openForm() {
       requestAnimationFrame(()=> {
         openPage("newSwatch");
@@ -466,7 +583,7 @@ import {stringify} from 'csv-stringify/browser/esm';
     const textSwatchUserName = document.querySelector("#newSwatch input[name='swatch.users[].name']");
     const buttonSwatchUserAdd = document.querySelector("#newSwatch input[name='User.add()']");
 
-    formNewSwatch.addEventListener('submit', ev => {
+    formNewSwatch.addEventListener('submit', async (ev) => {
       ev.preventDefault();
 
       if (submitSwatch.disabled) return;
@@ -483,29 +600,19 @@ import {stringify} from 'csv-stringify/browser/esm';
         users.push({ __id__: self.crypto.randomUUID(), name: node.value });
       });
 
-      dbReady.then(db => {
-        const swatches = db
-          .transaction("swatches", "readwrite")
-          .objectStore("swatches");
+      const swatches = await swatchesStore("readwrite");
 
-        const __id__ = self.crypto.randomUUID();
-        const requestAdd = swatches.add({
-          __id__,
-          name: textSwatchName.value,
-          tasks,
-          users,
-          activities: []
-        });
+      const __id__ = self.crypto.randomUUID();
+      const swatch = { __id__, name: textSwatchName.value, tasks, users }
 
-        requestAdd.onerror = (ev) => { console.log(ev) };
-        requestAdd.onsuccess = (ev) => { openSwatch(__id__) };
-      });
+      idb(() => swatches.add(swatch)).then(ev => { openSwatch(__id__) });
     });
 
     function submitForm() {
       const submit = new SubmitEvent("submit");
       formNewSwatch.dispatchEvent(submit);
     }
+
     function addTask() {
       if (buttonSwatchTaskAdd.disabled) return;
 
@@ -515,6 +622,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       buttonSwatchTaskAdd.disabled = true
       textSwatchTaskName.before(clone);
     }
+
     function addUser() {
       if (buttonSwatchUserAdd.disabled) return;
 
@@ -581,9 +689,18 @@ import {stringify} from 'csv-stringify/browser/esm';
       if (ev.ctrlKey) submitForm();
     });
 
+    async function openListOrForm() {
+      const [swatches, t] = await swatchesStore();
+      const count = await idb(() => swatches.count());
+      const req = swatches.count();
+
+      count > 0 ? openSwatchList() : openForm();
+    }
+
     let swatchId = localStorage.getItem("swatchId");
-    swatchId ? openSwatch(swatchId) : openForm();
-  };
+    if (swatchId) openSwatch(swatchId);
+    else openListOrForm();
+  }; // INIT END
 
   const canPersist = navigator.storage && navigator.storage.persist;
   if (!canPersist) {
@@ -597,34 +714,6 @@ import {stringify} from 'csv-stringify/browser/esm';
     requestDatabase.onupgradeneeded = (ev) => { migrate(requestDatabase.result) };
   });
 
-  async function getStore(name, mode = "readonly") {
-    const db = await dbReady
-    const transaction = db.transaction(name, mode);
-
-    return [transaction.objectStore(name), transaction];
-  }
-
-  // let swatches = [{
-  //   __id__: UUID(),
-  //   name: "Bürozeiten"
-  //   tasks: [
-  //     { __id__: UUID(), name: "Dokumentation" },
-  //     { __id__: UUID(), name: "Allgemeine Büroarbeit" }
-  //   ],
-  //   user: [
-  //     { __id__: UUID(), name: "LU" },
-  //     { __id__: UUID(), name: "TIE" },
-  //     { __id__: UUID(), name: "JT" },
-  //     { __id__: UUID(), name: "MS" },
-  //   ]
-  // }, ...];
-  // let activities = [{
-  //   __swatchId__: swatches.__id__,
-  //   __userId__: users.__id__,
-  //   __taskId__: undefined | tasks.__id__
-  //   startedAt: NOW(),
-  //   stoppedAt: undefined | NOW()
-  // }, ...];
   function migrate(db) {
     const locks = { activities: true, swatches: true };
 
@@ -658,4 +747,3 @@ import {stringify} from 'csv-stringify/browser/esm';
     document.addEventListener("DOMContentLoaded", () => init(window.swatchContext));
   }
 })({});
-
