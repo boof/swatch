@@ -156,7 +156,7 @@ input {
   font-size: 1.4em;
   padding: 0.2em 0.6em;
 }
-#swatchActiveUsers li a span {
+#swatch li a .timer {
   float: right;
   position: relative;
 }
