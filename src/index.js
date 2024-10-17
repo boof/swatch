@@ -5,102 +5,6 @@ import {stringify} from 'csv-stringify/browser/esm';
 ((ctx) => {
   function init(context) {
 
-    // IDB
-
-    async function idb(fn) {
-      const request = fn.call(context);
-      const promise = new Promise((resolve, reject) => {
-        request.onerror = (ev) => { reject(ev) };
-        request.onsuccess = (ev) => { resolve(request.result) };
-      });
-
-      return await promise;
-    }
-
-    async function updateActivity(activity, updates) {
-      const item = Object.assign(activity, updates);
-
-      const [activities, transaction] = await activitiesStore('readwrite');
-      const update = idb(() => activities.put(item));
-
-      // transaction.commit();
-
-      return await update;
-    }
-
-    async function queryIsActive(userId) {
-      const swatchId = currentSwatchId();
-      const index = await activitiesIndex("singleActiveUserIndex");
-      const activity = await idb(() => index.get([swatchId, userId, -1]));
-
-      return activity && activity.__id__ == userId;
-    }
-
-    function activitiesStore(mode = "readonly") { return getStore("activities", mode) };
-    function swatchesStore(mode = "readonly") { return getStore("swatches", mode) };
-
-    async function activitiesIndex(name, ...rest) {
-      const [store, t] = await activitiesStore.apply(this, rest);
-      return store.index(name);
-    }
-
-    async function queryActivities(query) {
-      let activities, key;
-      switch (typeof query) {
-      case "string":
-        activities = await activitiesIndex("swatchIndex");
-        key = query;
-        break;
-      case "object":
-        const index = Object.keys(query)[0];
-        activities = await activitiesIndex(index);
-        key = query[index];
-        break;
-      default:
-        throw("Doh!");
-      }
-      const getAll = idb(() => activities.getAll(__swatchId__));
-
-      return await getAll;
-    }
-
-    async function countOngoingActivities(__swatchId__) {
-      const ongoingActivities = await activitiesIndex("allActiveIndex");
-      const count = idb(() => ongoingActivities.count([__swatchId__, -1]));
-
-      return await count;
-    }
-
-    async function queryOngoingActivities(__swatchId__) {
-      const ongoingActivities = await activitiesIndex("allActiveIndex");
-      const getAll = idb(() => ongoingActivities.getAll([__swatchId__, -1]));
-
-      return await getAll;
-    }
-
-    async function getStore(name, mode = "readonly") {
-      const db = await dbReady
-      const transaction = db.transaction(name, mode);
-
-      return [transaction.objectStore(name), transaction];
-    }
-
-    async function getSwatches() {
-      const [swatches, t] = await swatchesStore();
-      const getAll = idb(() => swatches.getAll());
-
-      return await getAll;
-    }
-
-    async function getSwatch(id) {
-      if (currentSwatchId() == id) return currentSwatch();
-
-      const [swatches, t] = await swatchesStore();
-      const get = idb(() => swatches.get(id));
-
-      return await get;
-    }
-
     // GENERIC
 
     function sortByName(a, b) { return a.name.localeCompare(b.name) }
@@ -110,7 +14,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       const page = ev.detail.target.id;
       const url = new URL(location);
 
-      console.log(page);
+      console.debug(page);
 
       switch (page) {
         case 'banner':
@@ -135,8 +39,6 @@ import {stringify} from 'csv-stringify/browser/esm';
     });
     addEventListener('popstate', ev => {
       const { page, swatchId } = ev.state;
-
-      console.log(ev.state);
 
       switch (page) {
       case 'swatch': openSwatch(swatchId);
@@ -230,10 +132,10 @@ import {stringify} from 'csv-stringify/browser/esm';
         menuSpecific.classList.add("hidden");
       }
 
-      requestAnimationFrame(() => openPage("menu", swatch.name));
+      requestAnimationFrame(() => openPage("menu", swatch?.name || "Swatch"));
     }
     headerSwatchName.addEventListener("click", ev => {
-      context.currentPage == "menu" ? history.go(-1) : openMenu();
+      context.currentPage == "menu" ? history.back() : openMenu();
     });
 
     menuGeneric.addEventListener("click", ev => {
@@ -268,8 +170,8 @@ import {stringify} from 'csv-stringify/browser/esm';
     });
 
     async function exportCSV() {
-      const swatch = currentSwatch();
-      const activities = await queryActivities(swatch.__id__);
+      const { __id__, name } = currentSwatch();
+      const activities = await queryActivities(__id__);
       activities.sort(sortByStartedAt);
 
       const rows = [];
@@ -288,16 +190,16 @@ import {stringify} from 'csv-stringify/browser/esm';
 
         const anchor = document.createElement("A");
         anchor.href = URL.createObjectURL(data);
-        anchor.download = `${swatch.name}.csv`;
+        anchor.download = `${name}.csv`;
         anchor.click();
 
-        openSwatch(currentSwatchId());
+        history.back();
       });
 
       const formatter = new Intl.DateTimeFormat("de");
       activities.forEach(activity => {
         const date = formatter.format(activity.stoppedAt);
-        const dTs = (activity.stoppedAt - activity.startedAt.getTime()) / 1000;
+        const dTs = dT(activity) / 1000;
         const userName = usersById[activity.__userId__].name;
         const taskName = tasksById[activity.__taskId__].name;
 
@@ -331,25 +233,18 @@ import {stringify} from 'csv-stringify/browser/esm';
       const swatchId = currentSwatchId();
       resetCurrentSwatch();
 
-      const db = await dbReady;
-      const promises = [];
+      return readwrite(["swatches", "activities"], async ({ swatches, activities }) => {
+        const promises = [];
+        const keys = await wrapRequest(activities.index("swatchIndex").getAllKeys(swatchId));
+        keys.forEach(key => {
+          const deleteActivity = wrapRequest(activities.delete(key));
+          promises.push(deleteActivity);
+        });
+        const deleteSwatch = wrapRequest(swatches.delete(swatchId));
+        promises.push(deleteSwatch);
 
-      const transaction = db.transaction(["swatches", "activities"], "readwrite");
-      const swatches = transaction.objectStore("swatches");
-      const activities = transaction.objectStore("activities");
-
-      const keys = await idb(() => activities.index("swatchIndex").getAllKeys(swatchId));
-      keys.forEach(key => {
-        const deleteActivity = idb(() => activities.delete(key));
-        promises.push(deleteActivity);
+        return Promise.all(promises);
       });
-      const deleteSwatch = idb(() => swatches.delete(swatchId));
-      promises.push(deleteSwatch);
-
-      const deleteAll = Promise.all(promises).then(values => openListOrForm());
-      transaction.commit();
-
-      return await deleteAll;
     }
 
     pageDelete.addEventListener('click', ev => {
@@ -359,7 +254,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       ev.preventDefault();
 
       if (el.name == "back") openSwatch(currentSwatchId());
-      else deleteSwatch();
+      else deleteSwatch().then(() => openListOrForm());
     });
 
     // SWATCHES
@@ -369,6 +264,7 @@ import {stringify} from 'csv-stringify/browser/esm';
     async function openSwatchList() {
       openBanner();
 
+      resetCurrentSwatch();
       listSwatches.innerHTML = '';
 
       const swatches = await getSwatches();
@@ -455,6 +351,7 @@ import {stringify} from 'csv-stringify/browser/esm';
       btn.name = "taskId";
       btn.innerText = task.name;
       btn.data = task;
+      btn.classList.add('added');
 
       return btn;
     }
@@ -463,9 +360,10 @@ import {stringify} from 'csv-stringify/browser/esm';
     function redrawTasks() {
       if (currentSwatch() == null) return;
 
+      pageFinalize.querySelectorAll('.added').forEach(el => el.remove());
+
       const tasks = currentSwatch().tasks
       tasks.sort(sortByName);
-
       tasks.forEach(task => {
         const btn = createTaskButton(task);
         buttonFinalizeBack.before(btn);
@@ -484,14 +382,19 @@ import {stringify} from 'csv-stringify/browser/esm';
       const formatter = new Intl.DurationFormat("de", { style: "digital" });
 
       timers.forEach(timer => {
-        const dT = (now - timer.data.startedAt.getTime()) / 1000;
-        const seconds = Math.floor(dT % 60);
-        const dTm = Math.floor(dT / 60);
-        const minutes = Math.floor(dTm % 60);
-        const hours = Math.floor(dTm / 60);
-
-        timer.innerText = formatter.format({ hours, minutes, seconds});
+        const temporal = toTemporal(now - timer.data.startedAt.getTime());
+        timer.innerText = formatter.format(temporal);
       });
+    }
+
+    function toTemporal(ms) {
+      const dT = ms / 1000
+      const seconds = Math.floor(dT % 60);
+      const dTm = Math.floor(dT / 60);
+      const minutes = Math.floor(dTm % 60);
+      const hours = Math.floor(dTm / 60);
+
+      return { hours, minutes, seconds };
     }
 
     function startSwatchWatches() {
@@ -508,8 +411,9 @@ import {stringify} from 'csv-stringify/browser/esm';
       delete context.intervalSwatchWatches;
     }
 
-    function createUserListItem(user) {
+    function createUserListItem(user, duration) {
       const timer = document.createElement("SPAN");
+      timer.innerText = duration;
       timer.classList.add("timer");
 
       const anchor = document.createElement("A");
@@ -528,7 +432,7 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       const swatch = await getSwatch(swatchId);
       if (swatch == undefined) {
-        currentSwatch() ? openSwatch(currentSwatchId()) : openSwatchList();
+        currentSwatch() ? openSwatch(currentSwatchId()) : openListOrForm();
         return;
       }
 
@@ -539,6 +443,10 @@ import {stringify} from 'csv-stringify/browser/esm';
       activities.sort(sortByStartedAt);
       activities.forEach(activity => { activitiesByUserId[activity.__userId__] = activity });
 
+      const durations = await queryDurations(swatch.__id__);
+      const durationValuesByUserId = {};
+      durations.forEach(duration => { durationValuesByUserId[duration.__userId__] = duration.ms });
+
       const users = swatch.users;
       const activeUsers = [];
       users.forEach(user => {
@@ -547,9 +455,12 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       const userListItemsByUserId = {};
 
+      const formatter = new Intl.DurationFormat("de", { style: "digital" });
       listSwatchUsers.innerHTML = "";
       users.forEach(user => {
-        const item = createUserListItem(user);
+        const temporal = toTemporal(durationValuesByUserId[user.__id__] || 0);
+        const duration = formatter.format(temporal);
+        const item = createUserListItem(user, duration);
         userListItemsByUserId[user.__id__] = item;
         listSwatchUsers.append(item);
       });
@@ -570,14 +481,14 @@ import {stringify} from 'csv-stringify/browser/esm';
 
       ev.preventDefault();
 
+      const swatch = currentSwatch();
       const user = el.data;
-      const isActive = await queryIsActive(user.__id__);
+      const isActive = await queryIsActive(swatch.__id__, user.__id__);
       if (isActive) return;
 
       const item = el.parentNode.cloneNode(true);
       const timer = item.querySelector(".timer");
 
-      const swatch = currentSwatch();
       const startedAt = new Date();
       const activity = { startedAt, stoppedAt: -1, __swatchId__: swatch.__id__, __userId__: user.__id__ };
       timer.data = activity;
@@ -601,6 +512,8 @@ import {stringify} from 'csv-stringify/browser/esm';
     // FORM
 
     function openForm() {
+      resetCurrentSwatch();
+
       requestAnimationFrame(()=> {
         openPage("newSwatch");
         textSwatchName.focus();
@@ -618,28 +531,29 @@ import {stringify} from 'csv-stringify/browser/esm';
     formNewSwatch.addEventListener('submit', async (ev) => {
       ev.preventDefault();
 
-      // TODO reset form
-
       if (submitSwatch.disabled) return;
 
       let tasks = [];
-      const addedTaskNodes = textSwatchTaskName.parentNode.querySelectorAll(".added");
+      const addedTaskNodes = textSwatchTaskName.parentNode.querySelectorAll('.added');
       addedTaskNodes.forEach(node => {
         tasks.push({ __id__: self.crypto.randomUUID(), name: node.value });
       });
 
       let users = [];
-      const addedUserNodes = textSwatchUserName.parentNode.querySelectorAll(".added");
+      const addedUserNodes = textSwatchUserName.parentNode.querySelectorAll('.added');
       addedUserNodes.forEach(node => {
         users.push({ __id__: self.crypto.randomUUID(), name: node.value });
       });
 
-      const [swatches, t] = await swatchesStore("readwrite");
-
       const __id__ = self.crypto.randomUUID();
       const swatch = { __id__, name: textSwatchName.value, tasks, users }
 
-      idb(() => swatches.add(swatch)).then(ev => { openSwatch(__id__) });
+      submitSwatch.disabled = true;
+      formNewSwatch.reset();
+      formNewSwatch.querySelectorAll('.added').forEach(el => el.remove());
+
+      const [swatches, t] = await swatchesStore("readwrite");
+      wrapRequest(swatches.add(swatch)).then(() => openSwatch(__id__));
     });
 
     function submitForm() {
@@ -725,15 +639,13 @@ import {stringify} from 'csv-stringify/browser/esm';
 
     async function openListOrForm() {
       const [swatches, t] = await swatchesStore();
-      const count = await idb(() => swatches.count());
-      const req = swatches.count();
+      const count = await wrapRequest(swatches.count());
 
       count > 0 ? openSwatchList() : openForm();
     }
 
     let swatchId = localStorage.getItem("swatchId");
-    if (swatchId) openSwatch(swatchId);
-    else openListOrForm();
+    swatchId ? openSwatch(swatchId) : openListOrForm();
   }; // INIT END
 
   const canPersist = navigator.storage && navigator.storage.persist;
@@ -741,39 +653,231 @@ import {stringify} from 'csv-stringify/browser/esm';
     alert("Daten könnten beim Neuladen verloren gehen. Aktiviere die permanente Speicherung von Daten um das zu verhindern.");
   }
 
+  // IndexedDB
+
+  function wrapRequest(request) {
+    return new Promise((resolve, reject) => {
+      request.onerror = () => {
+        console.error(request.error);
+        reject(request.error);
+      };
+      request.onsuccess = () => {
+        console.debug("Request successful.")
+        resolve(request.result);
+      };
+    });
+  }
+
+  function wrapTransaction(transaction) {
+    console.debug(transaction.objectStoreNames);
+    console.trace();
+    return new Promise((reject, resolve) => {
+      transaction.onabort = () => {
+        console.warn('Transaction aborted.');
+        reject('Transaction aborted.');
+      };
+      transaction.onerror = () => {
+        console.error(transaction.error);
+        reject(transaction.error);
+      };
+      transaction.oncomplete = () => {
+        console.debug("Transaction complete.");
+        resolve(transaction);
+      };
+    });
+  }
+
+  async function _transaction(mode, storeNames, fn, db = undefined) {
+    if (typeof db == "undefined") db = await dbReady;
+
+    const objectStores = {};
+    const transaction = db.transaction(storeNames, mode);
+
+    storeNames.forEach(name => {
+      objectStores[name] = transaction.objectStore(name);
+    });
+
+    return fn(objectStores);
+  }
+  function readonly(...rest) { return _transaction("readonly", ...rest) }
+  function readwrite(...rest) { return _transaction("readwrite", ...rest) }
+
+  async function _objectStore(name, mode = "readonly", db = undefined) {
+    if (typeof db == "undefined") db = await dbReady;
+
+    const transaction = db.transaction(name, mode);
+
+    return [transaction.objectStore(name), transaction];
+  }
+  function activitiesStore(...rest) { return _objectStore("activities", ...rest) };
+  function swatchesStore(...rest) { return _objectStore("swatches", ...rest) };
+  function durationsStore(...rest) { return _objectStore("durations", ...rest) };
+
+  async function updateActivity(activity, updates) {
+    const item = Object.assign(activity, updates);
+
+    readwrite(["activities", "durations"], async ({ activities, durations }) => {
+      const updateActivity = wrapRequest(activities.put(item));
+
+      const duration = await wrapRequest(durations.get(activity.__userId__));
+      const incrementedDuration = incrementDuration(duration, activity);
+      const updateDuration = wrapRequest(durations.put(incrementedDuration))
+
+      return Promise.all([updateActivity, updateDuration]);
+    });
+  }
+
+  async function queryIsActive(swatchId, userId) {
+    const index = await activitiesIndex("singleActiveUserIndex");
+    const activity = await wrapRequest(index.get([swatchId, userId, -1]));
+
+    return activity && activity.__id__ == userId;
+  }
+
+  function activitiesIndex(name, ...rest) {
+    return activitiesStore(...rest).then(([store, t]) => { return store.index(name) });
+  }
+
+  function durationsIndex(name, ...rest) {
+    return durationsStore(...rest).then(([store, t]) => { return store.index(name) });
+  }
+
+  async function queryActivities(query) {
+    let activities, key;
+    switch (typeof query) {
+    case "string":
+      activities = await activitiesIndex("swatchIndex");
+      key = query;
+      break;
+    case "object":
+      [index, key] = Object.entries(query)[0];
+      activities = await activitiesIndex(index);
+      break;
+    default: throw("Doh!");
+    }
+
+    return wrapRequest(activities.getAll(key));
+  }
+
+  async function queryDurations(query) {
+    let durations, key;
+    switch (typeof query) {
+    case "string":
+      durations = await durationsIndex("swatchIndex");
+      key = query;
+      break;
+    case "object":
+      [index, key] = Object.entries(query)[0];
+      activities = await durationsIndex(index);
+      break;
+    default: throw("Doh!");
+    }
+
+    return wrapRequest(durations.getAll(key));
+  }
+
+  async function countOngoingActivities(swatchId) {
+    const ongoingActivities = await activitiesIndex("allActiveIndex");
+    return wrapRequest(ongoingActivities.count([swatchId, -1]));
+  }
+
+  async function queryOngoingActivities(swatchId) {
+    const ongoingActivities = await activitiesIndex("allActiveIndex");
+    return wrapRequest(ongoingActivities.getAll([swatchId, -1]));
+  }
+
+  async function getSwatches() {
+    const [swatches, t] = await swatchesStore();
+    return await wrapRequest(swatches.getAll());
+  }
+
+  async function getSwatch(id) {
+    const [swatches, t] = await swatchesStore();
+    return wrapRequest(swatches.get(id));
+  }
+
+  const migrations = [
+    (db) => { /* NOOP */ },
+    (db) => {
+      const swatches = db.createObjectStore('swatches', { keyPath: '__id__' });
+      swatches.createIndex('nameIndex', 'name', { unique: true });
+    },
+    (db) => {
+      const keyPath = ['__swatchId__', '__userId__', 'startedAt'];
+      const activities = db.createObjectStore('activities', { keyPath });
+      activities.createIndex('swatchIndex', '__swatchId__', { unique: false });
+      activities.createIndex('allActiveIndex', ['__swatchId__', 'stoppedAt'], { unique: false });
+      activities.createIndex('singleActiveUserIndex', ['__swatchId__', '__userId__', 'stoppedAt'], { unique: true });
+    },
+    (db, dataMigrators) => {
+      const durations = db.createObjectStore('durations', { keyPath: '__userId__' });
+      durations.createIndex('swatchIndex', '__swatchId__', { unique: false });
+
+      const dataMigrator = (db) => {
+        const objectStoreNames = ['activities', 'durations', 'swatches'];
+        readwrite(objectStoreNames, async ({ activities, durations, swatches}) => {
+          const keys = await wrapRequest(swatches.getAllKeys());
+          keys.forEach(async (__swatchId__) => {
+            console.debug(`Migrating swatch ${__swatchId__}...`);
+            const deltasByUserId = {};
+
+            const req = activities.index('swatchIndex').getAll(__swatchId__);
+            const swatchActivities = await wrapRequest(req);
+            swatchActivities.forEach(({ __userId__, ...rest }) => {
+              if (rest.stoppedAt == -1) return;
+              deltasByUserId[__userId__] = (deltasByUserId[__userId__] || 0) + dT(rest);
+            });
+
+            const userIdsAndMs = Object.entries(deltasByUserId);
+            userIdsAndMs.forEach(([__userId__, ms]) => {
+              durations.add({ __swatchId__, __userId__, ms })
+            });
+          });
+        }, db)
+      };
+      dataMigrators.push(dataMigrator);
+    },
+  ]
+  function migrate({ target, oldVersion, newVersion }, dataMigrators) {
+    const db = target.result, transaction = target.transaction;
+
+    for (let version = oldVersion; version < newVersion; version++) {
+      try {
+        console.debug(`Migrating to ${version + 1}...`)
+        migrations[version](db, dataMigrators);
+        console.debug(`Migrated to ${version + 1}.`)
+      } catch (error) {
+        console.error(error);
+        transaction.abort(error);
+      }
+    }
+  }
+
   const dbReady = new Promise((resolve, reject) => {
-    const requestDatabase = window.indexedDB.open("swatch", 3);
-    requestDatabase.onerror = (ev) => { reject(ev) };
-    requestDatabase.onsuccess = (ev) => { resolve(requestDatabase.result) };
-    requestDatabase.onupgradeneeded = (ev) => { migrate(requestDatabase.result) };
+    const req = window.indexedDB.open("swatch", migrations.length);
+    const dataMigrators = [];
+
+    req.onerror = (ev) => {
+      console.error(req.error);
+      reject(req.error);
+    };
+    req.onupgradeneeded = (ev) => {
+      console.debug(`Migrating database from ${ev.oldVersion} to ${ev.newVersion}...`);
+      migrate(ev, dataMigrators);
+    };
+    req.onsuccess = () => {
+      dataMigrators.forEach(fn => fn(req.result));
+      resolve(req.result);
+    };
   });
 
-  function migrate(db) {
-    const locks = { activities: true, swatches: true };
+  function incrementDuration(duration, { __swatchId__, __userId__, ...activity }) {
+    const ms = (duration?.ms || 0) + dT(activity);
+    return { __swatchId__, __userId__, ms };
+  }
 
-    if (db.objectStoreNames.contains("swatches")) {
-      delete locks.swatches;
-    } else {
-      const swatches = db.createObjectStore("swatches", { keyPath: "__id__" });
-      swatches.createIndex("nameIndex", "name", { unique: true });
-      swatches.transaction.oncomplete = () => {
-        delete locks.swatches;
-        if (Object.keys(locks).length === 0) dbReady.resolve(db)
-      };
-    }
-
-    if (db.objectStoreNames.contains("activities")) {
-      delete locks.activities;
-    } else {
-      const activities = db.createObjectStore("activities", { keyPath: ["__swatchId__", "__userId__", "startedAt"] });
-      activities.createIndex("swatchIndex", "__swatchId__", { unique: false });
-      activities.createIndex("allActiveIndex", ["__swatchId__", "stoppedAt"], { unique: false });
-      activities.createIndex("singleActiveUserIndex", ["__swatchId__", "__userId__", "stoppedAt"], { unique: true });
-      activities.transaction.oncomplete = () => {
-        delete locks.activities;
-        if (Object.keys(locks).length === 0) dbReady.resolve(db)
-      };
-    }
+  function dT(activity) {
+    return activity.stoppedAt - activity.startedAt.getTime();
   }
 
   if (window.swatchContext === undefined) {
